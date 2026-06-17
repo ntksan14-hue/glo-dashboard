@@ -4,239 +4,218 @@ import plotly.express as px
 
 
 # =====================================================
-# MAIN REGISTER FUNCTION
+# MAIN REGISTRATION
 # =====================================================
-def register_callbacks(app, df):
+def register_callbacks(app, df, df_clean):
 
-    # clean once (สำคัญมาก กัน Render ช้า + bug)
-    df_clean = df[df["sp"] == 0].copy()
-
-
-    # =====================================================
-    # TAB SWITCH RENDER
-    # =====================================================
+    # =================================================
+    # TAB SWITCH ROUTER
+    # =================================================
     @app.callback(
         Output("tab-content", "children"),
         Input("navigation-tabs", "value")
     )
-    def render_tab(tab):
+    def render_tab_content(tab):
 
+        df_clean_local = df[df["sp"] == 0]
+        df_3yr = df_clean_local[df_clean_local["year"].isin([2567, 2568, 2569])]
+
+        # =========================
+        # TAB 1
+        # =========================
         if tab == "tab-1":
-            return build_tab1(df_clean)
 
-        elif tab == "tab-2":
-            return build_tab2()
+            total_budget_3yr = df_3yr["total_budget"].sum()
+            total_cost = df_3yr["budget(cost)"].sum()
+            total_inv = df_3yr["budget(inv)"].sum()
+            so_sums = df_3yr.groupby("so_goal")["total_budget"].sum()
 
-        elif tab == "tab-3":
-            return build_tab3()
+            yearly_summary = df_clean_local.groupby("year").agg({
+                'budget(cost)': 'sum',
+                'budget(inv)': 'sum',
+                'total_budget': 'sum'
+            }).reset_index()
 
-        elif tab == "tab-4":
-            return build_tab4(df)
+            fig_trend = go.Figure()
+            df_past = yearly_summary[yearly_summary['year'] <= 2569]
 
-        return html.Div("No Tab Found")
+            fig_trend.add_trace(go.Bar(
+                x=df_past['year'],
+                y=df_past['budget(cost)'],
+                name='งบทำการ'
+            ))
+
+            fig_trend.add_trace(go.Bar(
+                x=df_past['year'],
+                y=df_past['budget(inv)'],
+                name='งบลงทุน'
+            ))
+
+            fig_trend.update_layout(
+                barmode='stack',
+                template='plotly_white'
+            )
+
+            fig_so_year = px.bar(
+                df_3yr.groupby(['year', 'so_goal'])['total_budget'].sum().reset_index(),
+                x='year',
+                y='total_budget',
+                color='so_goal',
+                barmode='stack'
+            )
+
+            return html.Div([
+                html.H3("TAB 1")
+            ])
 
 
-# =====================================================
-# TAB 1
-# =====================================================
-def build_tab1(df_clean):
+        # =========================
+        # TAB 2 (PLACEHOLDER SAFE)
+        # =========================
+        if tab == "tab-2":
+            return html.Div([
+                html.H3("TAB 2 READY")
+            ])
 
-    df_3yr = df_clean[df_clean["year"].isin([2567, 2568, 2569])]
+        # =========================
+        # TAB 3
+        # =========================
+        if tab == "tab-3":
+            df_s = df[df["sp"] == 0].copy()
+            df_s["year"] = df_s["year"].astype(str)
 
-    total_budget = df_3yr["total_budget"].sum()
-    total_cost = df_3yr["budget(cost)"].sum()
-    total_inv = df_3yr["budget(inv)"].sum()
+            df_m = df_s.melt(
+                id_vars=["year", "mod"],
+                value_vars=["budget(cost)", "budget(inv)"],
+                var_name="budget_type",
+                value_name="value"
+            )
 
-    fig = go.Figure()
+            df_m["budget_type"] = df_m["budget_type"].map({
+                "budget(cost)": "งบทำการ",
+                "budget(inv)": "งบลงทุน"
+            })
 
-    return html.Div([
-        html.H3("Tab 1 Dashboard"),
-        dcc.Graph(figure=fig)
-    ])
+            flow = df_m.groupby(["budget_type", "mod"], as_index=False)["value"].sum()
 
+            labels = ["งบทำการ", "งบลงทุน"] + sorted(flow["mod"].unique())
+            idx = {k: i for i, k in enumerate(labels)}
 
-# =====================================================
-# TAB 2 (layout only, graphs handled by callback below)
-# =====================================================
-def build_tab2():
-
-    return html.Div([
-        html.H3("SO Deep Dive"),
-
-        dcc.RadioItems(
-            id="tab2-year-selector",
-            options=[{"label": y, "value": y} for y in [2567, 2568, 2569]],
-            value=2569,
-            inline=True
-        ),
-
-        html.Hr(),
-
-        *[
-            html.Div([
-                html.H4(f"SO{i}"),
-                dcc.RadioItems(
-                    id=f"tab2-budget-selector-so{i}",
-                    options=[
-                        {"label": "Cost", "value": "cost"},
-                        {"label": "Inv", "value": "inv"},
-                        {"label": "All", "value": "total"},
-                    ],
-                    value="total",
-                    inline=True
-                ),
-                dcc.Graph(id={"type": "tab2-graph", "index": i}),
-                dash_table.DataTable(
-                    id={"type": "tab2-table", "index": i},
-                    page_size=8
+            fig = go.Figure(data=[go.Sankey(
+                node=dict(label=labels),
+                link=dict(
+                    source=flow["budget_type"].map(idx),
+                    target=flow["mod"].map(idx),
+                    value=flow["value"]
                 )
-            ]) for i in [1, 2, 3]
-        ]
-    ])
+            )])
+
+            return html.Div([
+                dcc.Graph(figure=fig)
+            ])
 
 
-# =====================================================
-# TAB 3
-# =====================================================
-def build_tab3():
-
-    return html.Div([
-        html.H3("Sankey + Module Ranking"),
-
-        dcc.RadioItems(
-            id="tab3-year-filter",
-            options=[
-                {"label": "ALL", "value": "ALL"},
-                {"label": "2567", "value": 2567},
-                {"label": "2568", "value": 2568},
-                {"label": "2569", "value": 2569},
-            ],
-            value="ALL",
-            inline=True
-        ),
-
-        dcc.Graph(id="tab3-sankey"),
-        dcc.Graph(id="tab3-top-module")
-    ])
+        # =========================
+        # TAB 4 (SAFE MINIMAL)
+        # =========================
+        if tab == "tab-4":
+            return html.Div([
+                html.H3("DRILLDOWN READY"),
+                dash_table.DataTable(
+                    data=df.to_dict("records"),
+                    page_size=10
+                )
+            ])
 
 
-# =====================================================
-# TAB 4
-# =====================================================
-def build_tab4(df):
+    # =====================================================
+    # TAB 4 FILTER CALLBACK
+    # =====================================================
+    @app.callback(
+        Output('drilldown-table', 'data'),
+        Input('filter-year', 'value'),
+        Input('filter-mod', 'value'),
+        Input('filter-so', 'value'),
+        Input('search-name', 'value')
+    )
+    def filter_table(years, mods, sos, search_term):
 
-    return html.Div([
-        html.H3("Drilldown Table"),
+        dff = df.copy()
 
-        html.Div([
-            dcc.Dropdown(
-                id="filter-year",
-                options=[{"label": y, "value": y} for y in sorted(df["year"].unique())],
-                multi=True
-            ),
+        if years:
+            dff = dff[dff['year'].isin(years)]
+        if mods:
+            dff = dff[dff['mod'].isin(mods)]
+        if sos:
+            dff = dff[dff['so_goal'].isin(sos)]
+        if search_term:
+            dff = dff[dff['ap_name_cleaned'].str.contains(search_term, case=False, na=False)]
 
-            dcc.Dropdown(
-                id="filter-mod",
-                options=[{"label": m, "value": m} for m in sorted(df["mod"].unique())],
-                multi=True
-            ),
-
-            dcc.Dropdown(
-                id="filter-so",
-                options=[{"label": s, "value": s} for s in sorted(df["so_goal"].unique())],
-                multi=True
-            ),
-
-            dcc.Input(id="search-name", type="text")
-        ]),
-
-        dash_table.DataTable(
-            id="drilldown-table",
-            page_size=10
-        )
-    ])
+        return dff.to_dict('records')
 
 
-# =====================================================
-# TAB 4 FILTER CALLBACK
-# =====================================================
-@app.callback(
-    Output("drilldown-table", "data"),
-    [
-        Input("filter-year", "value"),
-        Input("filter-mod", "value"),
-        Input("filter-so", "value"),
-        Input("search-name", "value")
-    ]
-)
-def filter_table(years, mods, sos, search):
+    # =====================================================
+    # SAFE TAB2 CALLBACK (NO CRASH VERSION)
+    # =====================================================
+    @app.callback(
+        Output({'type': 'tab2-graph', 'index': 1}, 'figure'),
+        Output({'type': 'tab2-graph', 'index': 2}, 'figure'),
+        Output({'type': 'tab2-graph', 'index': 3}, 'figure'),
+        Output({'type': 'tab2-table', 'index': 1}, 'data'),
+        Output({'type': 'tab2-table', 'index': 2}, 'data'),
+        Output({'type': 'tab2-table', 'index': 3}, 'data'),
+        Input('tab2-year-selector', 'value')
+    )
+    def update_tab2(selected_year):
 
-    dff = df.copy()
+        figs = []
+        tables = []
 
-    if years:
-        dff = dff[dff["year"].isin(years)]
-    if mods:
-        dff = dff[dff["mod"].isin(mods)]
-    if sos:
-        dff = dff[dff["so_goal"].isin(sos)]
-    if search:
-        dff = dff[dff["ap_name_cleaned"].str.contains(search, case=False, na=False)]
+        for so in [1, 2, 3]:
 
-    return dff.to_dict("records")
+            dff = df_clean[
+                (df_clean['year'] == selected_year) &
+                (df_clean['so_goal'] == so) &
+                (df_clean['sp'] == 0)
+            ]
 
+            if dff.empty:
+                figs.append(go.Figure())
+                tables.append([])
+                continue
 
-# =====================================================
-# TAB 2 COMBINED CALLBACK (NO INDENT BUG VERSION)
-# =====================================================
-@app.callback(
-    Output({"type": "tab2-graph", "index": 1}, "figure"),
-    Output({"type": "tab2-graph", "index": 2}, "figure"),
-    Output({"type": "tab2-graph", "index": 3}, "figure"),
-    Output({"type": "tab2-table", "index": 1}, "data"),
-    Output({"type": "tab2-table", "index": 2}, "data"),
-    Output({"type": "tab2-table", "index": 3}, "data"),
-    Input("tab2-year-selector", "value"),
-    Input("tab2-budget-selector-so1", "value"),
-    Input("tab2-budget-selector-so2", "value"),
-    Input("tab2-budget-selector-so3", "value"),
-)
-def update_tab2(year, b1, b2, b3):
+            g = dff.groupby("mod")["total_budget"].sum().reset_index()
 
-    SO_MAP = {
-        1: b1,
-        2: b2,
-        3: b3
-    }
+            fig = px.bar(g, x="mod", y="total_budget")
 
-    figs = []
-    tables = []
+            figs.append(fig)
 
-    for so in [1, 2, 3]:
+            tables.append(
+                dff.head(10)[["ap_name_cleaned", "mod", "total_budget"]].to_dict("records")
+            )
 
-        fig = go.Figure()
-        figs.append(fig)
-
-        tables.append([])
-
-    return figs[0], figs[1], figs[2], tables[0], tables[1], tables[2]
+        return figs[0], figs[1], figs[2], tables[0], tables[1], tables[2]
 
 
-# =====================================================
-# TAB 3 CALLBACKS
-# =====================================================
-@app.callback(
-    Output("tab3-sankey", "figure"),
-    Input("tab3-year-filter", "value")
-)
-def update_sankey(year):
-    fig = go.Figure()
-    return fig
+    # =====================================================
+    # DONUT CHART SAFE
+    # =====================================================
+    @app.callback(
+        Output('dynamic-donut-chart', 'figure'),
+        Output('dynamic-donut-cost-chart', 'figure'),
+        Input('donut-year-selector', 'value')
+    )
+    def update_donuts(selected_year):
 
+        dff = df[df["sp"] == 0]
 
-@app.callback(
-    Output("tab3-top-module", "figure"),
-    Input("tab3-year-filter", "value")
-)
-def update_top_module(year):
-    fig = go.Figure()
-    return fig
+        if selected_year != "ALL":
+            dff = dff[dff["year"] == selected_year]
+
+        inv = dff.groupby("mod")["budget(inv)"].sum().reset_index()
+        cost = dff.groupby("mod")["budget(cost)"].sum().reset_index()
+
+        fig1 = px.pie(inv, names="mod", values="budget(inv)", hole=0.5)
+        fig2 = px.pie(cost, names="mod", values="budget(cost)", hole=0.5)
+
+        return fig1, fig2
