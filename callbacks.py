@@ -17,70 +17,23 @@ def register_callbacks(app, df, df_clean):
     )
     def render_tab_content(tab):
 
-        df_clean_local = df[df["sp"] == 0]
-        df_3yr = df_clean_local[df_clean_local["year"].isin([2567, 2568, 2569])]
-
-        # =========================
-        # TAB 1
-        # =========================
         if tab == "tab-1":
+            df_clean_local = df[df["sp"] == 0]
+            df_3yr = df_clean_local[df_clean_local["year"].isin([2567, 2568, 2569])]
 
-            total_budget_3yr = df_3yr["total_budget"].sum()
-            total_cost = df_3yr["budget(cost)"].sum()
-            total_inv = df_3yr["budget(inv)"].sum()
-            so_sums = df_3yr.groupby("so_goal")["total_budget"].sum()
-
-            yearly_summary = df_clean_local.groupby("year").agg({
-                'budget(cost)': 'sum',
-                'budget(inv)': 'sum',
-                'total_budget': 'sum'
-            }).reset_index()
-
-            fig_trend = go.Figure()
-            df_past = yearly_summary[yearly_summary['year'] <= 2569]
-
-            fig_trend.add_trace(go.Bar(
-                x=df_past['year'],
-                y=df_past['budget(cost)'],
-                name='งบทำการ'
-            ))
-
-            fig_trend.add_trace(go.Bar(
-                x=df_past['year'],
-                y=df_past['budget(inv)'],
-                name='งบลงทุน'
-            ))
-
-            fig_trend.update_layout(
-                barmode='stack',
-                template='plotly_white'
-            )
-
-            fig_so_year = px.bar(
-                df_3yr.groupby(['year', 'so_goal'])['total_budget'].sum().reset_index(),
-                x='year',
-                y='total_budget',
-                color='so_goal',
-                barmode='stack'
-            )
-
+            # TAB 1 CONTENT
             return html.Div([
-                html.H3("TAB 1")
+                html.H3("TAB 1"),
+                # Add other components as needed
             ])
 
-
-        # =========================
-        # TAB 2 (PLACEHOLDER SAFE)
-        # =========================
-        if tab == "tab-2":
+        elif tab == "tab-2":
+            # TAB 2 CONTENT
             return html.Div([
                 html.H3("TAB 2 READY")
             ])
 
-        # =========================
-        # TAB 3
-        # =========================
-        if tab == "tab-3":
+        elif tab == "tab-3":
             df_s = df[df["sp"] == 0].copy()
             df_s["year"] = df_s["year"].astype(str)
 
@@ -114,11 +67,7 @@ def register_callbacks(app, df, df_clean):
                 dcc.Graph(figure=fig)
             ])
 
-
-        # =========================
-        # TAB 4 (SAFE MINIMAL)
-        # =========================
-        if tab == "tab-4":
+        elif tab == "tab-4":
             return html.Div([
                 html.H3("DRILLDOWN READY"),
                 dash_table.DataTable(
@@ -126,6 +75,9 @@ def register_callbacks(app, df, df_clean):
                     page_size=10
                 )
             ])
+
+        # Default case if tab is not recognized
+        return html.Div([])
 
 
     # =====================================================
@@ -155,7 +107,7 @@ def register_callbacks(app, df, df_clean):
 
 
     # =====================================================
-    # SAFE TAB2 CALLBACK (NO CRASH VERSION)
+    # TAB 2 CALLBACK (SAFE MINIMAL)
     # =====================================================
     @app.callback(
         Output({'type': 'tab2-graph', 'index': 1}, 'figure'),
@@ -168,11 +120,10 @@ def register_callbacks(app, df, df_clean):
     )
     def update_tab2(selected_year):
 
-        figs = []
+        figures = []
         tables = []
 
         for so in [1, 2, 3]:
-
             dff = df_clean[
                 (df_clean['year'] == selected_year) &
                 (df_clean['so_goal'] == so) &
@@ -180,7 +131,7 @@ def register_callbacks(app, df, df_clean):
             ]
 
             if dff.empty:
-                figs.append(go.Figure())
+                figures.append(go.Figure())
                 tables.append([])
                 continue
 
@@ -188,17 +139,17 @@ def register_callbacks(app, df, df_clean):
 
             fig = px.bar(g, x="mod", y="total_budget")
 
-            figs.append(fig)
+            figures.append(fig)
 
             tables.append(
                 dff.head(10)[["ap_name_cleaned", "mod", "total_budget"]].to_dict("records")
             )
 
-        return figs[0], figs[1], figs[2], tables[0], tables[1], tables[2]
+        return tuple(figures) + tuple(tables)
 
 
     # =====================================================
-    # DONUT CHART SAFE
+    # DONUT CHART CALLBACK (SAFE)
     # =====================================================
     @app.callback(
         Output('dynamic-donut-chart', 'figure'),
